@@ -12,7 +12,7 @@ import os
 from PIL import Image
 
 
-import numpy np
+import numpy as np
 import faiss
 import bm25s
 from datasets import load_dataset
@@ -35,7 +35,7 @@ TEMPERATURE = 0.2
 # INDEX_DIR = Path("toys_bm25s_index")
 INDEX_DIR = Path("toys_bm25s_index")
 VEC_DIR = Path("toys_faiss")
-TOP_KS = [20, 20, 20, 4]        # pool sizes per round
+TOP_KS = [4]        # pool sizes per round
 MAX_PRODUCTS = None                # None → full split; set small for demo
 SEM_K_FACTOR = 2                  # retrieve k*factor from each modality
 HYBRID_WEIGHT = 0.5               # 0.5 lexical + 0.5 semantic
@@ -400,6 +400,8 @@ def conversational_search():
                             
                             for idx in selected_indices:
                                 pid = pids[idx]
+                                print(images_by_pid)
+                                print(images_by_pid.get(pid, []))
                                 image_url = get_best_image_url(images_by_pid.get(pid, []))
                                 
                                 if image_url:
@@ -523,17 +525,17 @@ def download_image(url, save_path):
 
 def get_best_image_url(images):
     """이미지 목록에서 가장 좋은 품질의 이미지 URL을 반환합니다."""
-    if not images or not isinstance(images, list):
+    if not images or not isinstance(images, dict):
         return None
     
     for img in images:
-        if isinstance(img, dict):
-            if img.get("hi_res"):
-                return img["hi_res"]
-            elif img.get("large"):
-                return img["large"]
-            elif img.get("thumb"):
-                return img["thumb"]
+        if isinstance(images, dict):
+            if images.get("hi_res"):
+                return images["hi_res"][0]
+            elif images.get("large"):
+                return images["large"][0]
+            elif images.get("thumb"):
+                return images["thumb"][0]
     
     return None
 
