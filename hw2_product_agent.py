@@ -35,7 +35,7 @@ TEMPERATURE = 0.2
 # INDEX_DIR = Path("toys_bm25s_index")
 INDEX_DIR = Path("toys_bm25s_index")
 VEC_DIR = Path("toys_faiss")
-TOP_KS = [4]        # pool sizes per round
+TOP_KS = [10, 10, 10, 4]        # pool sizes per round
 MAX_PRODUCTS = None                # None → full split; set small for demo
 SEM_K_FACTOR = 2                  # retrieve k*factor from each modality
 HYBRID_WEIGHT = 0.5               # 0.5 lexical + 0.5 semantic
@@ -268,9 +268,9 @@ def reformulate_query(llm: ChatOpenAI, turns: list[tuple[str, str]]) -> str:
 SUMMARY_PROMPT = PromptTemplate(
     input_variables=["docs"],
     template=(
-        "Summarise the following 4 product descriptions in bullet points (≤ 40 words each).\n\n"
+        "Summarise the following 4 product descriptions in numbered list (≤ 40 words each).\n\n"
         "{docs}\n\n"
-        "Return exactly 4 bullet points."
+        "Return exactly 4 numbered list."
     )
 )
 def summarise_docs(llm: ChatOpenAI, docs: list[tuple[str, str]]) -> str:
@@ -357,32 +357,34 @@ def conversational_search():
             summary = summarise_docs(llm, [(pid, txt) for pid, txt, _ in final_hits])
             print("\n🔎  Top‑4 summary\n" + summary)
 
-            print("\n🖼  Top‑4 제품 이미지 URL")
+            # print("\n🖼  Top‑4 제품 이미지 URL")
             for pid in pids:
                 image_url = get_best_image_url(images_by_pid.get(pid, []))
-                if image_url:
-                    print(f"{pid}: {image_url}")
+                # if image_url:
+                #     print(f"{pid}: {image_url}")
             
             # 사용자에게 비디오 변환 여부 묻기
-            should_convert = input("\n이미지를 비디오로 변환하시겠습니까? (y/n): ").strip().lower()
+            # should_convert = input("\n이미지를 비디오로 변환하시겠습니까? (y/n): ").strip().lower()
+            should_convert = 'y'
             
             if should_convert == 'y':
-                model_type = input("사용할 모델을 선택하세요 (svd/svd_xt, 기본값: svd): ").strip().lower()
+                # model_type = input("사용할 모델을 선택하세요 (svd/svd_xt, 기본값: svd): ").strip().lower()
+                model_type = 'svd'
                 if model_type not in MODEL_NAMES:
                     model_type = "svd"
                     
-                print(f"\n[i] 모델 정보: {MODEL_NAMES[model_type]}")
-                print(f"[i] 예상 비용: ${MODEL_PRICING[model_type]}/비디오")
+                # print(f"\n[i] 모델 정보: {MODEL_NAMES[model_type]}")
+                # print(f"[i] 예상 비용: ${MODEL_PRICING[model_type]}/비디오")
                 
                 if not NOVITA_API_KEY:
                     print("[!] NOVITA_API_KEY가 설정되지 않았습니다. .env 파일에 추가해주세요.")
                 else:
                     # 사용자가 변환할 제품 선택
-                    print("\n변환할 제품의 번호를 선택하세요 (쉼표로 구분하여 여러 제품 선택 가능, 예: 1,3):")
-                    for i, pid in enumerate(pids, 1):
-                        print(f"{i}. {pid}")
+                    print("\nChoose the number of product:")
+                    # for i, pid in enumerate(pids, 1):
+                    #     print(f"{i}. {pid}")
                     
-                    selection = input("선택: ").strip()
+                    selection = input("Number: ").strip()
                     selected_indices = []
                     
                     try:
@@ -400,36 +402,36 @@ def conversational_search():
                             
                             for idx in selected_indices:
                                 pid = pids[idx]
-                                print(images_by_pid)
-                                print(images_by_pid.get(pid, []))
+                                # print(images_by_pid)
+                                # print(images_by_pid.get(pid, []))
                                 image_url = get_best_image_url(images_by_pid.get(pid, []))
                                 
                                 if image_url:
-                                    print(f"\n[+] 제품 {pid} 이미지를 비디오로 변환 중...")
+                                    # print(f"\n[+] 제품 {pid} 이미지를 비디오로 변환 중...")
                                     result = process_product_to_video(pid, image_url, model=model_type)
                                     results.append((pid, result))
                                 else:
                                     print(f"[!] 제품 {pid}의 이미지를 찾을 수 없습니다.")
                             
-                            # 결과 요약
-                            print("\n=== 변환 결과 요약 ===")
-                            success_count = sum(1 for _, r in results if r.get("success"))
-                            print(f"성공: {success_count}/{len(results)}")
+                            # # 결과 요약
+                            # print("\n=== 변환 결과 요약 ===")
+                            # success_count = sum(1 for _, r in results if r.get("success"))
+                            # print(f"성공: {success_count}/{len(results)}")
                             
-                            for pid, result in results:
-                                if result.get("success"):
-                                    status = "기존 비디오 사용" if result.get("already_exists") else "새로 생성됨"
-                                    video_path = result.get("video_path", "")
-                                    print(f"[✓] 제품 {pid} 비디오 {status}: {video_path}")
-                                else:
-                                    error = result.get("error", "알 수 없는 오류")
-                                    print(f"[✗] 제품 {pid} 비디오 변환 실패: {error}")
+                            # for pid, result in results:
+                            #     if result.get("success"):
+                            #         status = "기존 비디오 사용" if result.get("already_exists") else "새로 생성됨"
+                            #         video_path = result.get("video_path", "")
+                            #         print(f"[✓] 제품 {pid} 비디오 {status}: {video_path}")
+                            #     else:
+                            #         error = result.get("error", "알 수 없는 오류")
+                            #         print(f"[✗] 제품 {pid} 비디오 변환 실패: {error}")
                             
-                            # 비용 계산
-                            new_videos = sum(1 for _, r in results if r.get("success") and not r.get("already_exists"))
-                            if new_videos > 0:
-                                total_cost = MODEL_PRICING.get(model_type, 0) * new_videos
-                                print(f"\n[i] 총 비용: ${total_cost:.4f} ({new_videos}개 비디오 생성)")
+                            # # 비용 계산
+                            # new_videos = sum(1 for _, r in results if r.get("success") and not r.get("already_exists"))
+                            # if new_videos > 0:
+                            #     total_cost = MODEL_PRICING.get(model_type, 0) * new_videos
+                            #     print(f"\n[i] 총 비용: ${total_cost:.4f} ({new_videos}개 비디오 생성)")
                                 
                     except ValueError:
                         print("[!] 잘못된 입력입니다.")
@@ -495,11 +497,11 @@ def resize_image(image_path, output_path=None):
                 new_width = int(width * (MAX_IMAGE_HEIGHT / height))
             
             resized_img = img.resize((new_width, new_height), Image.LANCZOS)
-            print(f"[+] 이미지 크기 조정: {width}x{height} → {new_width}x{new_height}")
+            # print(f"[+] 이미지 크기 조정: {width}x{height} → {new_width}x{new_height}")
             resized_img.save(output_path)
             return True
         else:
-            print(f"[+] 이미지 크기 적합: {width}x{height}, 조정 불필요")
+            # print(f"[+] 이미지 크기 적합: {width}x{height}, 조정 불필요")
             return True
     except Exception as e:
         print(f"[!] 이미지 크기 조정 실패: {e}")
@@ -550,7 +552,7 @@ def convert_image_to_video(image_path, output_path, model="svd"):
         # 모델 선택 및 예상 비용 계산
         model_name = MODEL_NAMES.get(model.lower())
         estimated_cost = MODEL_PRICING.get(model.lower(), "알 수 없음")
-        print(f"[i] 선택한 모델: {model_name}, 예상 비용: ${estimated_cost}/비디오")
+        # print(f"[i] 선택한 모델: {model_name}, 예상 비용: ${estimated_cost}/비디오")
         
         # 이미지 base64로 인코딩
         image_base64 = encode_image_to_base64(image_path)
@@ -576,11 +578,11 @@ def convert_image_to_video(image_path, output_path, model="svd"):
             "Authorization": f"Bearer {NOVITA_API_KEY}"
         }
         
-        print(f"[+] Novita API 호출 시작: 이미지 {image_path} → 비디오 변환 중...")
+        # print(f"[+] Novita API 호출 시작: 이미지 {image_path} → 비디오 변환 중...")
         
         # API 호출
         response = requests.post(NOVITA_API_URL, json=payload, headers=headers)
-        print(f"[+] API 응답 상태 코드: {response.status_code}")
+        # print(f"[+] API 응답 상태 코드: {response.status_code}")
         
         if response.status_code == 200:
             result = response.json()
@@ -589,7 +591,7 @@ def convert_image_to_video(image_path, output_path, model="svd"):
             if not task_id:
                 return {"success": False, "error": "작업 ID를 받지 못했습니다"}
             
-            print(f"[+] 작업 ID: {task_id}. 변환 시작...")
+            # print(f"[+] 작업 ID: {task_id}. 변환 시작...")
             return check_video_conversion_status(task_id, output_path, model=model)
         else:
             print(f"[!] API 호출 실패: {response.status_code}")

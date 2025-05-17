@@ -1,3 +1,9 @@
 .env
 toys_bm25s_index/
 magazines_bm25s_index/
+output_videos/
+cellphones_bm25s_index/
+cellphones_faiss/
+magazines_index/
+sports_bm25s_index/
+toys_faiss/

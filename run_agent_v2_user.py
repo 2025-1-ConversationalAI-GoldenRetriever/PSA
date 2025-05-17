@@ -27,7 +27,7 @@ load_dotenv()
 
 MODEL_NAME = "gpt-4.1-mini"
 TEMPERATURE = 0.2
-# INDEX_DIR = Path("toys_bm25s_index")
+# INDEX_DIR = Path("cellphones_bm25s_index")
 INDEX_DIR = Path("toys_bm25s_index")
 VEC_DIR = Path("toys_faiss")
 TOP_KS = [20, 20, 20, 4]        # pool sizes per round
@@ -248,6 +248,7 @@ SUMMARY_PROMPT = PromptTemplate(
     template=(
         "Summarise the following 4 product descriptions in bullet points (≤ 40 words each).\n\n"
         "{docs}\n\n"
+        "Start with item id for each description."
         "Return exactly 4 bullet points."
     )
 )
@@ -330,13 +331,13 @@ def conversational_search():
 
 
             pids = [pid for pid, _, _ in final_hits]   # keep order if you like
-            images_by_pid = fetch_images_for_pids(pids)
+            # images_by_pid = fetch_images_for_pids(pids)
 
             summary = summarise_docs(llm, [(pid, txt) for pid, txt, _ in final_hits])
             print("\n🔎  Top‑4 summary\n" + summary)
 
-            print("\n🖼  Image URLs for the Top‑4 products")
-            print(str(images_by_pid))
+            # print("\n🖼  Image URLs for the Top‑4 products")
+            # print(str(images_by_pid))
             # for pid in pids:
             #     print(images_by_pid)
             #     # print(f"{pid}: {images_by_pid.get(pid, [])[:3]}")   # first 3 URLs (or tweak)
@@ -350,7 +351,7 @@ def conversational_search():
         qa_turns.append((question, answer))
         # Generation: 대화 이력 기반 쿼리 재구성
         search_query = reformulate_query(llm, qa_turns)
-        print(f"[ refined‑query ] → {search_query}\n")
+        # print(f"[ refined‑query ] → {search_query}\n")
 
 
 def fetch_images_for_pids(pids: list[str]) -> dict[str, list[str]]:
