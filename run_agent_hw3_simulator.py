@@ -102,7 +102,7 @@ def run_simulator(sim: user_simulator):
 
 
 # 시뮬레이터 파일 경로
-SIMULATOR_JSONL_PATH = "/Users/jinseok/Documents/PSA/sample_data/magazine_users.jsonl"
+SIMULATOR_JSONL_PATH = "./sample_data/magazine_users.jsonl"
 
 # LLM 세팅
 llm = ChatOpenAI(model_name=MODEL_NAME, temperature=TEMPERATURE)
@@ -117,4 +117,15 @@ def run_all_simulators():
             meta = data["metadata"]
             review = data["reviews"]
 
-            print(f"\n=== Running simulator {idx}: {paren
+            print(f"\n=== Running simulator {idx}: {parent_asin} ===\n")
+
+            sim = user_simulator(parent_asin=parent_asin, meta=meta, review=review, llm=llm)
+            turn = run_simulator(sim)
+            all_turns.append(turn)
+        
+        print(all_turns)
+        print(f"Average: {np.mean(all_turns)}")
+
+
+if __name__ == "__main__":
+    run_all_simulators()
