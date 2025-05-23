@@ -68,14 +68,15 @@ def run_simulator(sim: user_simulator):
                 for pid, txt, score in all_scores
             ]
 
-            rec_list = [(pid, txt) for pid, txt, score in scaled_scores if score > 0.7]
+            rec_list = [(pid, txt) for pid, txt, score in scaled_scores if score > 0.6]
             print(f"Number of items after filtering: {len(rec_list)}")
 
-            if len(rec_list) - len(disrec) > N_REC:
+            # 더 적극적인 추천 전환: 아이템이 15개 이하거나 3턴 이상이면 추천
+            if len(rec_list) - len(disrec) <= 15 or turn >= 3:
+                action = 'rec'
+            else:
                 rec_list.clear()
                 action = 'ask'
-            else:
-                action = 'rec'
 
         else:  # action == 'rec'
             to_show = [(pid, txt) for pid, txt in rec_list if pid not in disrec]
@@ -86,10 +87,14 @@ def run_simulator(sim: user_simulator):
             selection = sim.choose_item([pid for pid, _ in to_show])
             print(f"Simulator selection: {selection}")
 
+            # 동적 프로필 업데이트 반영
             if selection in {pid for pid, _ in to_show}:
                 print(f"Simulator selected target: {selection}")
+                sim.user_profile.update_from_interaction("selected", selection, "positive")
                 break
             else:
+                for pid, _ in to_show:
+                    sim.user_profile.update_from_interaction("rejected", pid, "negative")
                 disrec.update({pid for pid, _ in to_show})
                 rec_list.clear()
                 action = 'ask'
@@ -102,10 +107,13 @@ def run_simulator(sim: user_simulator):
 
 
 # 시뮬레이터 파일 경로
-SIMULATOR_JSONL_PATH = "./sample_data/magazine_users.jsonl"
+SIMULATOR_JSONL_PATH = "./sample_data/books_users.jsonl"
 
 # LLM 세팅
-llm = ChatOpenAI(model_name=MODEL_NAME, temperature=TEMPERATURE)
+llm = ChatOpenAI(
+    model_name=MODEL_NAME, 
+    temperature=TEMPERATURE,
+)
 
 # 모든 시뮬레이터 수행
 def run_all_simulators():

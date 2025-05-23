@@ -18,6 +18,8 @@ from Stemmer import Stemmer
 from tqdm import tqdm
 import warnings
 import os
+from books_product_info import BooksProductInfoExtractor
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings('ignore')
 from datasets import load_dataset
@@ -42,45 +44,37 @@ def _iter_products(limit: int | None = None):
     # 1) 메타 정보
     meta_ds = load_dataset(
         "McAuley-Lab/Amazon-Reviews-2023",
-        # "raw_meta_Toys_and_Games",
         'raw_meta_Magazine_Subscriptions',
         split="full",
         trust_remote_code=True,
     )
 
-    # 2) 리뷰 정보 →  parent_asin ➜ [review strings]
+    # 2) 리뷰 정보 →  parent_asin ➜ [review dicts]
     review_ds = load_dataset(
         "McAuley-Lab/Amazon-Reviews-2023",
-        # "raw_review_Toys_and_Games",
         'raw_review_Magazine_Subscriptions',
         split="full",
         trust_remote_code=True,
     )
 
-    reviews_by_pid: dict[str, list[str]] = defaultdict(list)
+    reviews_by_pid: dict[str, list[dict]] = defaultdict(list)
     for row in review_ds:
         pid = row["parent_asin"]
-        rv_title = row.get("title") or ""
-        rv_text  = row.get("text")  or ""
-        if rv_title or rv_text:
-            reviews_by_pid[pid].append(f"{rv_title} {rv_text}".strip())
+        reviews_by_pid[pid].append(row)
 
-    # 3) 메타 + 리뷰를 합쳐서 반환
+    # 3) 메타 + 리뷰를 합쳐서 ProductInfo로 변환
+    extractor = BooksProductInfoExtractor(llm=None)  # LLM 연결 시 인자 변경
     for i, row in enumerate(meta_ds):
         if limit and i >= limit:
             break
-
-        pid      = row["parent_asin"]
-        title    = "Title: " + row.get("title") or ""
-        features = "\nFeatures: " + " ".join(row.get("features", [])) if row.get("features") else ""
-        desc     = "\nDescriptions: " + str(row.get("description")) or ""
-        rv_blob  = "\nReviews: " + " ".join(reviews_by_pid.get(pid, []))
-
-        # text = "title: " +  str(title) + "\nfeatures: " + str(features) + "\ndesc: " + str(desc) + "\nreviews: " + str(rv_blob)
-
-        text = " ".join(filter(None, [str(title), str(features), str(desc), str(rv_blob)]))
-        if text:
-            yield {"id": pid, "text": text}
+        pid = row["parent_asin"]
+        product_info = extractor.extract_product_info(
+            pid,
+            row,
+            reviews_by_pid.get(pid, [])
+        )
+        doc = product_info.create_enhanced_book_document()
+        yield doc  # {"id": ..., "text": ..., "hierarchical": ..., ...}
 
 
 # ──────────────────────────────────────────────────
@@ -274,12 +268,15 @@ QUESTION_PROMPT = PromptTemplate(
         "Conversation context:\n{context}\n\n"
         # 요청
         "Using BOTH the conversation context and the product list, do the following:\n"
-        "1. Ask **one** concise follow-up question that will help the user further specify what they want.\n"
-        "   • The question should not be already answered or obvious from the context.\n"
+        "1. Ask **one** concise follow-up question that will help the user narrow down their search significantly.\n"
+        "   • The question should distinguish between the remaining products effectively.\n"
+        "   • The question should not repeat or be too similar to previous questions.\n"
+        "   • Focus on the most important differentiating factors among the products.\n"
         "   • Do **not** recommend any specific item.\n\n"
-        "2. Provide a list of **meaningful and mutually exclusive answer choices**, up to **5 choices maximum**.\n"
-        "   • Begin each choice with a number (e.g., 1. 2. 3. ...).\n"
-        "   • The options should reflect real differences in user preference based on the context and product list.\n"
+        "2. Provide a list of **meaningful and mutually exclusive answer choices**, up to **4 choices maximum**.\n"
+        "   • Begin each choice with a number (1. 2. 3. 4.).\n"
+        "   • The options should reflect significant differences that help narrow down the search.\n"
+        "   • Make choices broad enough to be useful but specific enough to filter products.\n"
         "   • Do not include redundant or overlapping options.\n\n"
         "Format your output as follows:\n"
         "Question: <your generated question here>\n"
@@ -287,8 +284,7 @@ QUESTION_PROMPT = PromptTemplate(
         "2. <second option>\n"
         "3. <third option>\n"
         "4. <fourth option>\n"
-        "5. <fifth option>\n"
-        "(Only include as many as are appropriate; fewer than 5 is fine)"
+        "(Only include as many as are appropriate; fewer than 4 is fine)"
     ),
 )
 
@@ -344,7 +340,6 @@ def conversational_search():
             #   ↳ 마지막 iteration: 문서 4개 요약 후 종료
             final_hits = hybrid_search(search_query, bm25_idx, vec_idx, 4)
 
-
             pids = [pid for pid, _, _ in final_hits]   # keep order if you like
             # images_by_pid = fetch_images_for_pids(pids)
 
@@ -367,6 +362,3 @@ def conversational_search():
         # Generation: 대화 이력 기반 쿼리 재구성
         search_query = reformulate_query(llm, qa_turns)
         # print(f"[ refined‑query ] → {search_query}\n")
-
-
-def fetch_images_for_pids(pids: list
