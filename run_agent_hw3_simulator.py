@@ -1,4 +1,6 @@
 import os
+import json
+import numpy as np
 from pathlib import Path
 from collections import defaultdict
 from datasets import load_dataset
@@ -6,7 +8,7 @@ import bm25s
 from langchain_community.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from utils import *
-from utils import _build_or_load_bm25_index
+from utils import _build_or_load_bm25_index, rewrite_query, reformulate_query, bm25_search, MODEL_NAME, TEMPERATURE, ask_disambiguation
 from user_simulator_hw3 import user_simulator
 
 
@@ -97,6 +99,7 @@ def run_simulator(sim: user_simulator):
                     sim.user_profile.update_from_interaction("rejected", pid, "negative")
                 disrec.update({pid for pid, _ in to_show})
                 rec_list.clear()
+                action = 'ask'
                 action = 'ask'
 
 

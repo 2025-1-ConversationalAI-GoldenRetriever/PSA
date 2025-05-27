@@ -149,30 +149,30 @@ class BooksProductInfo:
         card = f"{main_category} | {subcategories} | {title} by {author} | {keywords_str} | {review_aspects_str}"
         return card
 
-    def _extract_basic_info_safe(self, product_info: BooksProductInfo, raw_meta: Dict):
+    def _extract_basic_info_safe(self, raw_meta: Dict):
         try:
-            product_info.title = raw_meta.get("title", "").strip() or None
-            product_info.authors = self._parse_author_from_str(raw_meta.get("author"))
+            self.title = raw_meta.get("title", "").strip() or None
+            self.authors = self._parse_author_from_str(raw_meta.get("author"))
             categories = raw_meta.get("categories", raw_meta.get("category", []))
             if isinstance(categories, str):
                 categories = [categories]
-            product_info.categories = [cat.strip() for cat in categories if isinstance(cat, str) and cat.strip()]
+            self.categories = [cat.strip() for cat in categories if isinstance(cat, str) and cat.strip()]
             desc = raw_meta.get("description", [])
             if isinstance(desc, list):
-                product_info.description = " ".join(filter(None, desc)).strip() or None
+                self.description = " ".join(filter(None, desc)).strip() or None
             elif isinstance(desc, str):
-                product_info.description = desc.strip() or None
+                self.description = desc.strip() or None
             try:
                 if raw_meta.get("average_rating"):
-                    product_info.average_rating = float(raw_meta["average_rating"])
+                    self.average_rating = float(raw_meta["average_rating"])
             except (ValueError, TypeError):
                 pass
             try:
                 if raw_meta.get("rating_number"):
-                    product_info.rating_count = int(raw_meta["rating_number"])
+                    self.rating_count = int(raw_meta["rating_number"])
             except (ValueError, TypeError):
                 pass
-            self._parse_price_safe(product_info, raw_meta.get("price"))
+            self._parse_price_safe(raw_meta.get("price"))
         except Exception as e:
             print(f"Error in basic info extraction: {e}")
 
@@ -209,7 +209,7 @@ class BooksProductInfo:
             authors = [str(v).strip() for v in author_data.values() if str(v).strip()]
         return [author for author in authors if len(author) > 1]
 
-    def _parse_price_safe(self, product_info: BooksProductInfo, price_raw):
+    def _parse_price_safe(self, price_raw):
         if not price_raw:
             return
         try:
@@ -217,10 +217,117 @@ class BooksProductInfo:
             price_str = str(price_raw).lower()
             price_match = re.search(r'(\d+\.?\d*)', price_str.replace(',', ''))
             if price_match:
-                product_info.price = float(price_match.group(1))
+                self.price = float(price_match.group(1))
         except:
             pass
 
+    def _extract_series_info(self, title: str, description: str) -> Optional[SeriesInfo]:
+        # "Book 1", "Volume 2" 등 패턴 매칭
+        series_pattern = r'(Book|Volume|Part)\s+(\d+)'
+        match = re.search(series_pattern, title)
+        if match:
+            return SeriesInfo(
+                series_name=title.split(match.group())[0].strip(),
+                position_in_series=int(match.group(2)),
+                total_books_in_series=0  # 추후 API로 조회 가능
+            )
+        return None
+
+    def _extract_user_insights_safe(self, reviews: List[Dict]):
+        try:
+            self.liked_aspects = self._extract_liked_aspects(reviews)
+            self.disliked_aspects = self._extract_disliked_aspects(reviews)
+            if not self.complexity:
+                self.complexity = self._analyze_complexity(reviews)
+            if not self.target_audience:
+                self.target_audience = self._identify_target_audience(reviews)
+        except Exception as e:
+            print(f"Error in user insights extraction: {e}")
+
+    def _extract_liked_aspects(self, reviews: List[Dict]) -> List[str]:
+        positive_keywords = [
+            'engaging', 'compelling', 'well-written', 'fascinating', 'brilliant',
+            'captivating', 'thought-provoking', 'insightful', 'entertaining',
+            'gripping', 'touching', 'inspiring', 'educational', 'informative'
+        ]
+        all_text = ' '.join([
+            review.get('title', '') + ' ' + review.get('text', '')
+            for review in reviews if review.get('rating', 0) >= 4.0
+        ]).lower()
+        found_keywords = [kw for kw in positive_keywords if kw in all_text]
+        return found_keywords[:10]
+
+    def _extract_disliked_aspects(self, reviews: List[Dict]) -> List[str]:
+        negative_keywords = [
+            'boring', 'confusing', 'difficult', 'slow', 'repetitive',
+            'predictable', 'disappointing', 'unclear', 'dry', 'verbose'
+        ]
+        all_text = ' '.join([
+            review.get('title', '') + ' ' + review.get('text', '')
+            for review in reviews if review.get('rating', 0) <= 2.0
+        ]).lower()
+        found_keywords = [kw for kw in negative_keywords if kw in all_text]
+        return found_keywords[:5]
+
+    def _analyze_complexity(self, reviews: List[Dict]) -> str:
+        all_text = ' '.join([
+            review.get('text', '') for review in reviews
+        ]).lower()
+        beginner_indicators = ['easy', 'simple', 'basic', 'beginner', 'accessible']
+        advanced_indicators = ['complex', 'advanced', 'difficult', 'challenging', 'deep']
+        beginner_count = sum(all_text.count(ind) for ind in beginner_indicators)
+        advanced_count = sum(all_text.count(ind) for ind in advanced_indicators)
+        if beginner_count > advanced_count * 2:
+            return 'beginner'
+        elif advanced_count > beginner_count * 2:
+            return 'advanced'
+        else:
+            return 'medium'
+
+    def _identify_target_audience(self, reviews: List[Dict]) -> List[str]:
+        all_text = ' '.join([
+            review.get('text', '') for review in reviews
+        ]).lower()
+        audience_keywords = {
+            'students': ['student', 'college', 'university', 'academic'],
+            'professionals': ['professional', 'work', 'career', 'business'],
+            'general_readers': ['anyone', 'everyone', 'general'],
+            'young_adults': ['young adult', 'teen', 'teenager'],
+            'adults': ['adult', 'mature']
+        }
+        identified = [aud for aud, kws in audience_keywords.items() if any(kw in all_text for kw in kws)]
+        return identified if identified else ['general_readers']
+
+
+class BooksProductInfoExtractor:
+    """BooksProductInfo 추출기 클래스"""
+    
+    def __init__(self, llm=None):
+        self.llm = llm
+        self._genre_cache = {}
+        self._theme_cache = {}
+    
+    def extract_product_info(self, parent_asin: str, raw_meta: Dict, raw_reviews: List[Dict]) -> BooksProductInfo:
+        """메타데이터와 리뷰에서 구조화된 제품 정보 추출"""
+        product_info = BooksProductInfo(parent_asin=parent_asin)
+        
+        # 기본 정보 추출
+        product_info._extract_basic_info_safe(raw_meta)
+        
+        # 콘텐츠 특성 추출
+        self._extract_content_features_safe(product_info, raw_meta, raw_reviews)
+        
+        # 사용자 인사이트 추출
+        product_info._extract_user_insights_safe(raw_reviews)
+        
+        # 시리즈 정보 추출
+        if product_info.title and product_info.description:
+            product_info.series_info = product_info._extract_series_info(
+                product_info.title, product_info.description
+            )
+        
+        return product_info
+    
     def _extract_content_features_safe(self, product_info: BooksProductInfo, raw_meta: Dict, raw_reviews: List[Dict]):
         try:
             product_info.genres = self._classify_genres_rule_based(
@@ -361,82 +468,6 @@ class BooksProductInfo:
                 "worse_than": []
             }
 
-    def _extract_series_info(self, title: str, description: str) -> Optional[SeriesInfo]:
-        # "Book 1", "Volume 2" 등 패턴 매칭
-        series_pattern = r'(Book|Volume|Part)\s+(\d+)'
-        match = re.search(series_pattern, title)
-        if match:
-            return SeriesInfo(
-                series_name=title.split(match.group())[0].strip(),
-                position_in_series=int(match.group(2)),
-                total_books_in_series=0  # 추후 API로 조회 가능
-            )
-        return None
-
-    def _extract_user_insights_safe(self, product_info: BooksProductInfo, reviews: List[Dict]):
-        try:
-            product_info.liked_aspects = self._extract_liked_aspects(reviews)
-            product_info.disliked_aspects = self._extract_disliked_aspects(reviews)
-            if not product_info.complexity:
-                product_info.complexity = self._analyze_complexity(reviews)
-            if not product_info.target_audience:
-                product_info.target_audience = self._identify_target_audience(reviews)
-        except Exception as e:
-            print(f"Error in user insights extraction: {e}")
-
-    def _extract_liked_aspects(self, reviews: List[Dict]) -> List[str]:
-        positive_keywords = [
-            'engaging', 'compelling', 'well-written', 'fascinating', 'brilliant',
-            'captivating', 'thought-provoking', 'insightful', 'entertaining',
-            'gripping', 'touching', 'inspiring', 'educational', 'informative'
-        ]
-        all_text = ' '.join([
-            review.get('title', '') + ' ' + review.get('text', '')
-            for review in reviews if review.get('rating', 0) >= 4.0
-        ]).lower()
-        found_keywords = [kw for kw in positive_keywords if kw in all_text]
-        return found_keywords[:10]
-
-    def _extract_disliked_aspects(self, reviews: List[Dict]) -> List[str]:
-        negative_keywords = [
-            'boring', 'confusing', 'difficult', 'slow', 'repetitive',
-            'predictable', 'disappointing', 'unclear', 'dry', 'verbose'
-        ]
-        all_text = ' '.join([
-            review.get('title', '') + ' ' + review.get('text', '')
-            for review in reviews if review.get('rating', 0) <= 2.0
-        ]).lower()
-        found_keywords = [kw for kw in negative_keywords if kw in all_text]
-        return found_keywords[:5]
-
-    def _analyze_complexity(self, reviews: List[Dict]) -> str:
-        all_text = ' '.join([
-            review.get('text', '') for review in reviews
-        ]).lower()
-        beginner_indicators = ['easy', 'simple', 'basic', 'beginner', 'accessible']
-        advanced_indicators = ['complex', 'advanced', 'difficult', 'challenging', 'deep']
-        beginner_count = sum(all_text.count(ind) for ind in beginner_indicators)
-        advanced_count = sum(all_text.count(ind) for ind in advanced_indicators)
-        if beginner_count > advanced_count * 2:
-            return 'beginner'
-        elif advanced_count > beginner_count * 2:
-            return 'advanced'
-        else:
-            return 'medium'
-
-    def _identify_target_audience(self, reviews: List[Dict]) -> List[str]:
-        all_text = ' '.join([
-            review.get('text', '') for review in reviews
-        ]).lower()
-        audience_keywords = {
-            'students': ['student', 'college', 'university', 'academic'],
-            'professionals': ['professional', 'work', 'career', 'business'],
-            'general_readers': ['anyone', 'everyone', 'general'],
-            'young_adults': ['young adult', 'teen', 'teenager'],
-            'adults': ['adult', 'mature']
-        }
-        identified = [aud for aud, kws in audience_keywords.items() if any(kw in all_text for kw in kws)]
-        return identified if identified else ['general_readers']
 
 # ===== 기존 시스템 호환 함수 =====
 def create_legacy_document(product_info: BooksProductInfo) -> Dict[str, str]:
