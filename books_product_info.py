@@ -102,25 +102,52 @@ class BooksProductInfo:
             "consistency": consistency
         }
 
-class BooksProductInfoExtractor:
-    """개선된 Books 정보 추출기"""
-    def __init__(self, llm: Optional[Any] = None):
-        self.llm = llm
-        self._genre_cache = {}
-        self._theme_cache = {}
-
-    def extract_product_info(self, parent_asin: str, raw_meta_data: Dict[str, Any], raw_review_data: List[Dict[str, Any]]) -> BooksProductInfo:
-        product_info = BooksProductInfo(parent_asin=parent_asin)
-        try:
-            self._extract_basic_info_safe(product_info, raw_meta_data)
-            self._extract_content_features_safe(product_info, raw_meta_data, raw_review_data)
-            self._extract_user_insights_safe(product_info, raw_review_data)
-            product_info.searchable_components = product_info.create_enhanced_book_document()
-        except Exception as e:
-            print(f"Error extracting product info for {parent_asin}: {e}")
-            if not product_info.searchable_components:
-                product_info.searchable_components = {"id": parent_asin, "text": ""}
-        return product_info
+    def generate_product_card(self, llm: Optional[Any] = None) -> str:
+        """
+        Generate a concise product card summary for search/recommendation.
+        Format: <MainCategory> | <Subcategories> | <Title> by <Author> | <Keywords> | <ReviewAspects>
+        Uses LLM for summarization if available, otherwise falls back to rule-based summary.
+        """
+        # Main category and subcategories
+        main_category = self.genres[0] if self.genres else (self.categories[0] if self.categories else "Book")
+        subcategories = ", ".join(self.genres[1:3]) if len(self.genres) > 1 else ", ".join(self.categories[1:3])
+        # Title and author(s)
+        title = self.title or "Unknown Title"
+        author = ", ".join(self.authors) if self.authors else "Unknown Author"
+        # Keywords: genres, themes, search_boost_terms
+        keywords = list(set(self.genres + self.themes + self.search_boost_terms))
+        keywords_str = ", ".join(keywords[:5])
+        # Review aspects: liked/disliked aspects, or LLM summary
+        review_aspects = []
+        if llm:
+            # Try to get a 1-sentence summary from LLM
+            summary_prompt = (
+                "Summarize the following book in one concise sentence for a product card. "
+                "Focus on what makes it unique, its main themes, and who would enjoy it.\n"
+                f"Title: {title}\nAuthor: {author}\nDescription: {self.description or ''}\n"
+                f"Genres: {', '.join(self.genres)}\nThemes: {', '.join(self.themes)}\n"
+                f"Liked: {', '.join(self.liked_aspects)}\nDisliked: {', '.join(self.disliked_aspects)}"
+            )
+            try:
+                response = llm.invoke(summary_prompt)
+                if hasattr(response, 'content'):
+                    review_aspects.append(response.content.strip())
+                else:
+                    review_aspects.append(str(response).strip())
+            except Exception:
+                pass
+        if not review_aspects:
+            # Fallback: join liked/disliked aspects and reading_experience_summary
+            if self.reading_experience_summary:
+                review_aspects.append(self.reading_experience_summary)
+            if self.liked_aspects:
+                review_aspects.append("Liked: " + ", ".join(self.liked_aspects[:3]))
+            if self.disliked_aspects:
+                review_aspects.append("Disliked: " + ", ".join(self.disliked_aspects[:2]))
+        review_aspects_str = " | ".join([a for a in review_aspects if a])
+        # Compose product card
+        card = f"{main_category} | {subcategories} | {title} by {author} | {keywords_str} | {review_aspects_str}"
+        return card
 
     def _extract_basic_info_safe(self, product_info: BooksProductInfo, raw_meta: Dict):
         try:
@@ -149,11 +176,13 @@ class BooksProductInfoExtractor:
         except Exception as e:
             print(f"Error in basic info extraction: {e}")
 
+    # Improved author parsing (robust to dict-like strings)
     def _parse_author_from_str(self, author_data: Any) -> List[str]:
         if not author_data:
             return []
         authors = []
         if isinstance(author_data, str):
+            # Try JSON/dict-like parsing
             try:
                 import json
                 json_data = json.loads(author_data)
@@ -162,11 +191,22 @@ class BooksProductInfoExtractor:
                 elif isinstance(json_data, dict):
                     authors = [str(v).strip() for v in json_data.values() if str(v).strip()]
                 else:
-                    authors = [author_data.strip()]
+                    authors = [str(json_data).strip()]
             except Exception:
-                authors = [author_data.strip()]
+                # Try to extract from dict-like string manually
+                dict_match = re.match(r"\{.*\}", author_data.strip())
+                if dict_match:
+                    try:
+                        items = re.findall(r"'([^']+)'\s*:\s*'([^']+)'", author_data)
+                        authors = [v for k, v in items if v.strip()]
+                    except Exception:
+                        pass
+                if not authors:
+                    authors = [author_data.strip()]
         elif isinstance(author_data, list):
             authors = [str(a).strip() for a in author_data if str(a).strip()]
+        elif isinstance(author_data, dict):
+            authors = [str(v).strip() for v in author_data.values() if str(v).strip()]
         return [author for author in authors if len(author) > 1]
 
     def _parse_price_safe(self, product_info: BooksProductInfo, price_raw):

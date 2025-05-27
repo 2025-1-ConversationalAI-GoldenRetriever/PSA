@@ -73,8 +73,17 @@ def _iter_products(limit: int | None = None):
             row,
             reviews_by_pid.get(pid, [])
         )
-        doc = product_info.create_enhanced_book_document()
-        yield doc  # {"id": ..., "text": ..., "hierarchical": ..., ...}
+        # Use product card as main searchable text
+        product_card = product_info.generate_product_card(getattr(extractor, 'llm', None))
+        doc = {
+            "id": product_info.parent_asin,
+            "text": product_card,
+            "hierarchical": product_info.create_enhanced_book_document().get("hierarchical", {}),
+            "structured": product_info.create_enhanced_book_document().get("structured", {}),
+            "search_boost_terms": product_info.search_boost_terms,
+            "negative_signals": product_info.negative_signals
+        }
+        yield doc  # {"id": ..., "text": ..., ...}
 
 
 # ──────────────────────────────────────────────────
