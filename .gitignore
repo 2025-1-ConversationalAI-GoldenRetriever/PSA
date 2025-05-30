@@ -7,3 +7,6 @@ cellphones_faiss/
 magazines_index/
 sports_bm25s_index/
 toys_faiss/
+books_baseline_bm25s_index/
+index_builder.py
+index_builder_productcard.py
